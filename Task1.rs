@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::io;
-use std::fmt;
+use std::io::{self, Write};
 
 struct Cell {
     address: String,
@@ -31,19 +30,18 @@ impl Warehouse {
         }
     }
 
-    fn is_valid_address(&self, address: &str) -> bool {
+    fn address_valid(&self, address: &str) -> bool {
         if address.len() != 5 {
             return false;
         }
         
-        let zone_char = address.chars().nth(0).unwrap();
-        let zone = zone_char as i32 - 'A' as i32;
-        if zone < 0 || zone >= self.zones {
+        let zone = address.chars().nth(0).unwrap();
+        if zone < 'A' || zone >= ('A' as u8 + self.zones as u8) as char {
             return false;
         }
         
-        let shelf_str = &address[1..3];
-        let shelf = match shelf_str.parse::<i32>() {
+        let shelf_part = &address[1..3];
+        let shelf = match shelf_part.parse::<i32>() {
             Ok(num) => num,
             Err(_) => return false,
         };
@@ -51,14 +49,18 @@ impl Warehouse {
             return false;
         }
         
-        let section_char = address.chars().nth(3).unwrap();
-        let section = section_char as i32 - '0' as i32;
+        let section = match address.chars().nth(3).unwrap().to_digit(10) {
+            Some(num) => num as i32,
+            None => return false,
+        };
         if section < 1 || section > self.sections_per_shelf {
             return false;
         }
         
-        let shelf_num_char = address.chars().nth(4).unwrap();
-        let shelf_num = shelf_num_char as i32 - '0' as i32;
+        let shelf_num = match address.chars().nth(4).unwrap().to_digit(10) {
+            Some(num) => num as i32,
+            None => return false,
+        };
         if shelf_num < 1 || shelf_num > self.shelves_per_section {
             return false;
         }
@@ -66,25 +68,25 @@ impl Warehouse {
         true
     }
 
-    fn add_product(&mut self, product: &str, quantity: i32, address: &str) {
-        if !self.is_valid_address(address) {
-            println!("Неверный адрес: {}", address);
+    fn add(&mut self, product: &str, quantity: i32, address: &str) {
+        if !self.address_valid(address) {
+            println!("Ошибка: Неверный адрес: {}", address);
             return;
         }
 
         if quantity > 10 {
-            println!("Нельзя добавить более 10 единиц в ячейку");
+            println!("Ошибка: Нельзя добавить более 10 единиц в ячейку");
             return;
         }
 
         if let Some(cell) = self.cells.get_mut(address) {
             if cell.product != product {
-                println!("Ячейка {} уже содержит {}", address, cell.product);
+                println!("Ошибка: Ячейка {} уже содержит {}", address, cell.product);
                 return;
             }
             if cell.quantity + quantity > 10 {
-                println!("Ячейка {} не может содержать более 10 единиц (сейчас: {})", 
-                         address, cell.quantity);
+                println!("Ошибка: Ячейка {} не может содержать более 10 единиц (сейчас: {})", 
+                    address, cell.quantity);
                 return;
             }
             cell.quantity += quantity;
@@ -99,26 +101,27 @@ impl Warehouse {
         println!("Добавлено {} единиц {} в {}", quantity, product, address);
     }
 
-    fn remove_product(&mut self, product: &str, quantity: i32, address: &str) {
-        if !self.is_valid_address(address) {
-            println!("Неверный адрес: {}", address);
+    fn remove(&mut self, product: &str, quantity: i32, address: &str) {
+        if !self.address_valid(address) {
+            println!("Ошибка: Неверный адрес: {}", address);
             return;
         }
 
         if !self.cells.contains_key(address) {
-            println!("Ячейка {} пуста", address);
+            println!("Ошибка: Ячейка {} пуста", address);
             return;
         }
 
         let cell = self.cells.get_mut(address).unwrap();
         if cell.product != product {
-            println!("Ячейка {} содержит {}, а не {}", address, cell.product, product);
+            println!("Ошибка: Ячейка {} содержит {}, а не {}", 
+                address, cell.product, product);
             return;
         }
 
         if cell.quantity < quantity {
-            println!("Недостаточно {} в ячейке {} (доступно: {})", 
-                     product, address, cell.quantity);
+            println!("Ошибка: Недостаточно {} в ячейке {} (доступно: {})", 
+                product, address, cell.quantity);
             return;
         }
 
@@ -131,16 +134,17 @@ impl Warehouse {
         }
     }
 
-    fn print_info(&self) {
+    fn info(&self) {
         let total_percent = (self.used_capacity as f64 / self.total_capacity as f64) * 100.0;
-        println!("Склад заполнен на {:.1}%", total_percent);
+        println!("Информация о складе:");
+        println!("Общая заполненность: {:.1}%", total_percent);
 
-        let mut zone_capacity: HashMap<char, i32> = HashMap::new();
-        let mut zone_used: HashMap<char, i32> = HashMap::new();
+        let mut zone_capacity = HashMap::new();
+        let mut zone_used = HashMap::new();
         
         for zone in 'A'..('A' as u8 + self.zones as u8) as char {
-            let cap = self.shelves_per_zone * self.sections_per_shelf * self.shelves_per_section * 10;
-            zone_capacity.insert(zone, cap);
+            zone_capacity.insert(zone, 
+                self.shelves_per_zone * self.sections_per_shelf * self.shelves_per_section * 10);
             zone_used.insert(zone, 0);
         }
 
@@ -150,10 +154,9 @@ impl Warehouse {
         }
 
         for zone in 'A'..('A' as u8 + self.zones as u8) as char {
-            let used = zone_used[&zone];
-            let cap = zone_capacity[&zone];
-            let zone_percent = (used as f64 / cap as f64) * 100.0;
-            println!("Зона {} заполнена на {:.1}%", zone, zone_percent);
+            let percent = (*zone_used.get(&zone).unwrap() as f64 / 
+                          *zone_capacity.get(&zone).unwrap() as f64) * 100.0;
+            println!("Зона {} заполнена на {:.1}%", zone, percent);
         }
 
         println!("\nЗанятые ячейки:");
@@ -161,7 +164,8 @@ impl Warehouse {
             println!("{}: {} ({})", cell.address, cell.product, cell.quantity);
         }
 
-        let total_cells = self.zones * self.shelves_per_zone * self.sections_per_shelf * self.shelves_per_section;
+        let total_cells = self.zones * self.shelves_per_zone * 
+                         self.sections_per_shelf * self.shelves_per_section;
         let empty_cells = total_cells - self.cells.len() as i32;
         println!("\nПустые ячейки: {}", empty_cells);
     }
@@ -169,60 +173,65 @@ impl Warehouse {
 
 fn main() {
     let mut warehouse = Warehouse::new(1, 10, 7, 4, 2800);
-
-    let mut input = String::new();
+    
     loop {
         print!(">>> ");
-        io::Write::flush(&mut io::stdout()).unwrap();
-        input.clear();
-        io::stdin().read_line(&mut input).unwrap();
-        let parts: Vec<&str> = input.trim().split_whitespace().collect();
+        io::stdout().flush().unwrap();
         
-        if parts.is_empty() {
+        let mut command = String::new();
+        io::stdin().read_line(&mut command).unwrap();
+        let command = command.trim();
+        
+        if command.is_empty() {
             continue;
         }
 
+        let parts: Vec<&str> = command.split_whitespace().collect();
         match parts[0] {
             "ADD" => {
-                if parts.len() != 4 {
-                    println!("Неверное количество аргументов для ADD");
+                if parts.len() < 4 {
+                    println!("Ошибка: Неправильный формат команды ADD. Используйте: ADD <продукт> <количество> <адрес>");
                     continue;
                 }
+                
                 let product = parts[1];
-                let quantity = match parts[2].parse() {
+                let quantity = match parts[2].parse::<i32>() {
                     Ok(num) => num,
                     Err(_) => {
-                        println!("Неверное количество");
+                        println!("Ошибка: Неправильный формат количества. Должно быть целое число");
                         continue;
                     }
                 };
                 let address = parts[3];
-                warehouse.add_product(product, quantity, address);
+                
+                warehouse.add(product, quantity, address);
             },
             "REMOVE" => {
-                if parts.len() != 4 {
-                    println!("Неверное количество аргументов для REMOVE");
+                if parts.len() < 4 {
+                    println!("Ошибка: Неправильный формат команды REMOVE. Используйте: REMOVE <продукт> <количество> <адрес>");
                     continue;
                 }
+                
                 let product = parts[1];
-                let quantity = match parts[2].parse() {
+                let quantity = match parts[2].parse::<i32>() {
                     Ok(num) => num,
                     Err(_) => {
-                        println!("Неверное количество");
+                        println!("Ошибка: Неправильный формат количества. Должно быть целое число");
                         continue;
                     }
                 };
                 let address = parts[3];
-                warehouse.remove_product(product, quantity, address);
+                
+                warehouse.remove(product, quantity, address);
             },
             "INFO" => {
-                warehouse.print_info();
+                warehouse.info();
             },
             "EXIT" => {
                 break;
             },
             _ => {
-                println!("Неизвестная команда. Доступные команды: ADD, REMOVE, INFO, EXIT");
+                println!("Ошибка: Неизвестная команда '{}'. Доступные команды: ADD, REMOVE, INFO, EXIT", parts[0]);
             }
         }
     }
