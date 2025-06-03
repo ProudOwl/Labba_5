@@ -5,7 +5,6 @@
 #include <iomanip>
 #include <algorithm>
 #include <limits>
-
 using namespace std;
 
 class Warehouse {
