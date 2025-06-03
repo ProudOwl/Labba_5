@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
-
+#include <limits>
 using namespace std;
 
 struct Visitor {
@@ -32,7 +32,6 @@ vector<Window> distribute_queue(queue<Visitor>& q, int windows_count) {
         Visitor visitor = q.front();
         q.pop();
 
-        // найти окно с минимальным total_time
         auto min_window = min_element(windows.begin(), windows.end(),
             [](const Window& a, const Window& b) {
                 return a.total_time < b.total_time;
@@ -45,24 +44,57 @@ vector<Window> distribute_queue(queue<Visitor>& q, int windows_count) {
 }
 
 int main() {
-    int windows_count;
+    int windows_count = 0;
     string command;
     queue<Visitor> visitors_queue;
-    cout << ">>> Введите кол-во окон" << endl;
-    cout << "<<< ";
-    cin >> windows_count;
+    
+    while (true) {
+        cout << ">>> Введите кол-во окон" << endl;
+        cout << "<<< ";
+        try {
+            cin >> windows_count;
+            if (cin.fail() || windows_count <= 0) {
+                cin.clear();
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                throw invalid_argument("Неверный ввод. Введите положительное целое число");
+            }
+            break;
+        } catch (const exception& e) {
+            cerr << ">>> Ошибка: " << e.what() << endl;
+        }
+    }
 
     while (true) {
         cout << "<<< ";
         cin >> command;
+        
         if (command == "ENQUEUE") {
-            int duration;
-            cin >> duration;
-            string ticket = generate_ticket();
-            visitors_queue.push({ticket, duration});
-            cout << ">>> " << ticket << endl;
-        } else if (command == "DISTRIBUTE") {
+            while (true) {
+                int duration;
+                try {
+                    cin >> duration;
+                    if (cin.fail() || duration <= 0) {
+                        cin.clear();
+                        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                        throw invalid_argument("Неверный ввод. Введите положительное целое число");
+                    }
+                    
+                    string ticket = generate_ticket();
+                    visitors_queue.push({ticket, duration});
+                    cout << ">>> " << ticket << endl;
+                    break;
+                } catch (const exception& e) {
+                    cerr << ">>> Ошибка: " << e.what() << endl;
+                }
+            }
+        } 
+        else if (command == "DISTRIBUTE") {
             break;
+        } 
+        else {
+            cout << ">>> Неизвестная команда. Используйте ENQUEUE или DISTRIBUTE" << endl;
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
         }
     }
 
