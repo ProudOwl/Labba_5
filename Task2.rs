@@ -33,14 +33,14 @@ fn distribute_queue(q: &mut VecDeque<Visitor>, windows_count: usize) -> Vec<Wind
     }
 
     while let Some(visitor) = q.pop_front() {
-        let duration = visitor.duration;  // Сохраняем duration до перемещения visitor
+        let duration = visitor.duration;
         let min_window = windows
             .iter_mut()
             .min_by_key(|w| w.total_time)
             .unwrap();
 
         min_window.visitors.push(visitor);
-        min_window.total_time += duration;  // Используем сохраненное значение
+        min_window.total_time += duration;
     }
     windows
 }
